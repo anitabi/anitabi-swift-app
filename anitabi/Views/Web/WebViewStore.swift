@@ -196,7 +196,12 @@ class WebViewStore: ObservableObject {
                     if (!existingNotice) {
                         const noticeElement = document.createElement('div');
                         noticeElement.setAttribute('data-injected-notice', 'true');
-                        noticeElement.innerHTML = '<a><i>下列部分按钮可能需要长按才能被跳转</i></a></br>';
+                        // 注意書きを単独行にする。フッターのボタンが増えても重ならないよう、
+                        // 全幅を占有してボタン群を次の行へ折り返させる。
+                        noticeElement.style.cssText = 'flex-basis: 100%; width: 100%; margin-bottom: 4px;';
+                        noticeElement.innerHTML = '<a><i>下列部分按钮可能需要长按才能被跳转</i></a>';
+                        // 親（div.foot）を折り返し可能にして、通知の下にボタンが回り込むようにする
+                        footerDiv.style.flexWrap = 'wrap';
                         footerDiv.insertBefore(noticeElement, footerDiv.firstChild);
                     }
                 }
