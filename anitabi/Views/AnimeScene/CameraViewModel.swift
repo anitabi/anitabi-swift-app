@@ -25,7 +25,6 @@ class CameraViewModel: ObservableObject {
     
     @Published var isSettingUp: Bool = true
     @Published var cameraPermissionDenied: Bool = false
-    @Published var photoLibraryPermissionDenied: Bool = false
     @Published private(set) var isCameraReady: Bool = false
     
     // セッションが実行中かどうかを確認するプロパティ
@@ -46,19 +45,14 @@ class CameraViewModel: ObservableObject {
                     completion(true, "相机")
                 }
             } else {
+                // 相册権限はここでは要求しない。
+                // 写真選択は PHPicker（権限不要）で行い、保存は対比結果画面で実際に保存する時に要求する。
+                // これにより「入室直後にいきなり相册権限ダイアログ」を避ける。
                 self?.setupCamera()
-                self?.checkPhotoLibraryAuthorization { denied in
-                    if denied {
-                        DispatchQueue.main.async {
-                            self?.photoLibraryPermissionDenied = true
-                            completion(true, "相册")
-                        }
-                    }
-                }
             }
         }
     }
-    
+
     private func checkCameraAuthorization(completion: @escaping (Bool) -> Void) {
         switch AVCaptureDevice.authorizationStatus(for: .video) {
         case .authorized:
@@ -73,34 +67,32 @@ class CameraViewModel: ObservableObject {
             completion(true)
         }
     }
-    
-    private func checkPhotoLibraryAuthorization(completion: @escaping (Bool) -> Void) {
-        switch PHPhotoLibrary.authorizationStatus() {
-        case .authorized, .limited:
-            completion(false)
-        case .notDetermined:
-            PHPhotoLibrary.requestAuthorization { status in
-                completion(status != .authorized && status != .limited)
-            }
-        case .denied, .restricted:
-            completion(true)
-        @unknown default:
-            completion(true)
-        }
-    }
-    
+
     func setupCamera() {
-        isSettingUp = true
-        
         sessionQueue.async { [weak self] in
             guard let self = self else { return }
-            
+
+            // 已在运行：无需重复配置，仅同步状态。
+            // 避免「重拍 / 多次 onAppear / updateUIView」反复重置会话，导致预览闪烁与竞态。
+            if self.captureSession.isRunning {
+                DispatchQueue.main.async {
+                    self.isSettingUp = false
+                    self.isCameraReady = true
+                }
+                return
+            }
+
+            DispatchQueue.main.async { self.isSettingUp = true }
+
             self.resetCaptureSession()
-            self.configureCaptureSession()
-            
+
+            // 配置失败时 configureCaptureSession 内部已更新状态（isCameraReady = false），这里直接返回，
+            // 不再无条件把 isCameraReady 置为 true。
+            guard self.configureCaptureSession() else { return }
+
             // セッションの開始はメインスレッドで行わない
             self.captureSession.startRunning()
-            
+
             DispatchQueue.main.async {
                 self.isSettingUp = false
                 self.isCameraReady = true
@@ -121,20 +113,21 @@ class CameraViewModel: ObservableObject {
         }
     }
     
-    private func configureCaptureSession() {
+    @discardableResult
+    private func configureCaptureSession() -> Bool {
         captureSession.beginConfiguration()
-        
+
         // 高品質な写真を撮影するための設定
         if captureSession.canSetSessionPreset(.photo) {
             captureSession.sessionPreset = .photo
         }
-        
+
         // バックカメラの設定
         guard let videoDevice = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) else {
             handleCameraSetupFailure("Failed to get back camera")
-            return
+            return false
         }
-        
+
         do {
             // 自動フォーカスと露出の設定
             try videoDevice.lockForConfiguration()
@@ -150,23 +143,25 @@ class CameraViewModel: ObservableObject {
             
             guard captureSession.canAddInput(videoInput) else {
                 handleCameraSetupFailure("Failed to add video input")
-                return
+                return false
             }
             captureSession.addInput(videoInput)
-            
+
             guard captureSession.canAddOutput(photoOutput) else {
                 handleCameraSetupFailure("Failed to add photo output")
-                return
+                return false
             }
-            
+
             // 高品質な写真出力の設定
             photoOutput.maxPhotoQualityPrioritization = .quality
-            
+
             captureSession.addOutput(photoOutput)
-            
+
             captureSession.commitConfiguration()
+            return true
         } catch {
             handleCameraSetupFailure("Error setting up camera: \(error.localizedDescription)")
+            return false
         }
     }
     
@@ -280,25 +275,16 @@ class PhotoCaptureDelegate: NSObject, AVCapturePhotoCaptureDelegate {
             return
         }
         
-        guard let imageData = photo.fileDataRepresentation(), 
+        guard let imageData = photo.fileDataRepresentation(),
               let image = UIImage(data: imageData) else {
             print("Failed to get photo data")
             completion(nil)
             return
         }
-        
-        saveCapturedImageToGallery(image)
-        
+
+        // 撮影した生画像は自動保存しない。
+        // 保存はユーザーが対比結果画面（ComparisonResultView）で明示的に行う。
         completion(image)
     }
-    
-    private func saveCapturedImageToGallery(_ image: UIImage) {
-        PHPhotoLibrary.shared().performChanges {
-            PHAssetChangeRequest.creationRequestForAsset(from: image)
-        } completionHandler: { success, error in
-            if let error = error {
-                print("Error saving photo to gallery: \(error.localizedDescription)")
-            }
-        }
-    }
-} 
+}
+

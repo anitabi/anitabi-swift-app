@@ -15,6 +15,8 @@ class WebViewStore: ObservableObject {
     // WKWebViewのシングルトンインスタンス
     @Published var webView: WKWebView
     private var cancellables = Set<AnyCancellable>()
+    // ハンドラー / ユーザースクリプトを一度だけ設定するためのフラグ
+    private var handlersConfigured = false
     
     // シングルトンパターンの実装
     static let shared = WebViewStore()
@@ -29,7 +31,7 @@ class WebViewStore: ObservableObject {
         
         // ウェブコンテンツのスケーリングを制御するスクリプト
         let disableZoomScript = WKUserScript(
-            source: "var meta = document.createElement('meta'); meta.name = 'viewport'; meta.content = 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no'; document.getElementsByTagName('head')[0].appendChild(meta);",
+            source: "var meta = document.createElement('meta'); meta.name = 'viewport'; meta.content = 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover'; document.getElementsByTagName('head')[0].appendChild(meta);",
             injectionTime: .atDocumentEnd,
             forMainFrameOnly: true
         )
@@ -46,38 +48,12 @@ class WebViewStore: ObservableObject {
         webView.customUserAgent = "Ukenn2112/anitabiApp/\(version) (iOS) (https://github.com/Ukenn2112/anitabiApp)"
         
         // CSS注入
-        let excludedModels: Set<String> = [
-              "iPhone12,8", "iPhone14,6", // iPhone SE 2/3
-              "iPad7,3", "iPad7,4",                   // iPad Pro 10.5-inch (第1世代)
-              "iPad7,5", "iPad7,6",                   // iPad 6th Gen
-              "iPad7,11", "iPad7,12",                 // iPad 7th Gen
-              "iPad8,1", "iPad8,2", "iPad8,3", "iPad8,4",   // iPad Pro 11-inch (第1世代)
-              "iPad8,5", "iPad8,6", "iPad8,7", "iPad8,8",   // iPad Pro 12.9-inch (第3世代)
-              "iPad8,9", "iPad8,10",                 // iPad Pro 11-inch (第2世代)
-              "iPad8,11", "iPad8,12",                // iPad Pro 12.9-inch (第4世代)
-              "iPad11,1", "iPad11,2",                // iPad mini 5th Gen
-              "iPad11,3", "iPad11,4",                // iPad Air 3rd Gen
-              "iPad11,6", "iPad11,7",                // iPad 8th Gen
-              "iPad12,1", "iPad12,2",                // iPad 9th Gen
-              "iPad13,1", "iPad13,2",                // iPad Air 4th Gen
-              "iPad13,4", "iPad13,5", "iPad13,6", "iPad13,7", // iPad Pro 11-inch (第3世代)
-              "iPad13,8", "iPad13,9", "iPad13,10", "iPad13,11", // iPad Pro 12.9-inch (第5世代)
-              "iPad13,16", "iPad13,17",              // iPad Air 5th Gen
-              "iPad13,18", "iPad13,19",              // iPad 10th Gen
-              "iPad14,1", "iPad14,2",                // iPad mini 6th Gen
-              "iPad14,3", "iPad14,4",                // iPad Pro 11-inch (第4世代)
-              "iPad14,5", "iPad14,6",                // iPad Pro 12.9-inch (第6世代)
-              "iPad14,8", "iPad14,9",                // iPad Air 11-inch (第6世代)
-              "iPad14,10", "iPad14,11",              // iPad Air 13-inch (第6世代)
-              "iPad15,3", "iPad15,4",                // iPad Air 11-inch (第7世代)
-              "iPad15,5", "iPad15,6",                // iPad Air 13-inch (第7世代)
-              "iPad15,7", "iPad15,8",                // iPad 11th Gen
-              "iPad16,1", "iPad16,2",                // iPad mini 7th Gen
-              "iPad16,3", "iPad16,4",                // iPad Pro 11-inch (第5世代)
-              "iPad16,5", "iPad16,6"                 // iPad Pro 12.9-inch (第7世代)
-        ]
-        let currentModel = UIDevice.current.modelIdentifier
-        let cssString = !excludedModels.contains(currentModel) ?
+        // 機種リストのハードコード（新機種が出るたびに追記が必要）をやめ、
+        // CSS の env(safe-area-inset-*) で端末の Safe Area に自動追従させる。
+        // ※ env() を有効にするため viewport に viewport-fit=cover を付与済み（disableZoomScript）。
+        //   目安: Dynamic Island/ノッチ機は inset-top≈59 → margin≈70/80、
+        //         非ノッチ機（SE/iPad 等）は inset-top≈0 → margin≈11/21 と自動で縮む。
+        let cssString =
         """
             a[href*="sponsor.png"] {
               display: none !important;
@@ -87,31 +63,14 @@ class WebViewStore: ObservableObject {
                     --mobile-map-side-height: 45vh;
                 }
                 .side-search-form, .func-change-logs-fixed, .window-bangumis-box {
-                    margin-top: 70px !important;
+                    margin-top: calc(env(safe-area-inset-top) + 11px) !important;
                     background-image: none !important;
                 }
                 .window-points-box {
-                    margin-bottom: 50px !important;
+                    margin-bottom: calc(env(safe-area-inset-bottom) + 16px) !important;
                 }
                 .func-change-logs-fixed {
-                    margin-top: 80px !important;
-                }
-            }
-        """ :
-        """
-            a[href*="sponsor.png"] {
-              display: none !important;
-            }
-            @media (max-width: 800px) {
-                .map-box {
-                    --mobile-map-side-height: 45vh;
-                }
-                .side-search-form, .func-change-logs-fixed, .window-bangumis-box {
-                    margin-top: 20px !important;
-                    background-image: none !important;
-                }
-                .func-change-logs-fixed {
-                    margin-top: 30px !important;
+                    margin-top: calc(env(safe-area-inset-top) + 21px) !important;
                 }
             }
         """
@@ -147,6 +106,12 @@ class WebViewStore: ObservableObject {
     
     // インスタンスに画像ハンドラーとURLハンドラーを設定するメソッド
     func configureHandlers(imageViewModel: ImageViewModel, safariViewModel: SafariViewModel, sceneComparisonViewModel: SceneComparisonViewModel) {
+        // PersistentWebView は SwiftUI の struct のため、ContentView の body 再評価のたびに init → 本メソッドが呼ばれる。
+        // ViewModel は ContentView の @StateObject で生成され不変なので、設定は一度きりで十分。
+        // 一度きりにしないと addUserScript が累積し、window.open の多重フック・setInterval タイマーの多重登録（メモリ/CPU リーク）を招く。
+        guard !handlersConfigured else { return }
+        handlersConfigured = true
+
         // 以前のハンドラーを削除（再設定の場合）
         webView.configuration.userContentController.removeScriptMessageHandler(forName: "imageHandler")
         webView.configuration.userContentController.removeScriptMessageHandler(forName: "urlHandler")
@@ -237,9 +202,19 @@ class WebViewStore: ObservableObject {
         } else {
             injectFooterContent();
         }
-        
-        // 定期的に確認（DOMが動的に変更される場合）
-        setInterval(injectFooterContent, 2000);
+
+        // ポーリング（setInterval）の代わりに MutationObserver で DOM 変化を監視する。
+        // DOM がアイドルの間は一切処理せず、変化時のみ requestAnimationFrame でまとめて 1 回実行する。
+        let footerScheduled = false;
+        const footerObserver = new MutationObserver(function() {
+            if (footerScheduled) return;
+            footerScheduled = true;
+            requestAnimationFrame(function() {
+                footerScheduled = false;
+                injectFooterContent();
+            });
+        });
+        footerObserver.observe(document.documentElement, { childList: true, subtree: true });
         """
         
         let footerInjectionUserScript = WKUserScript(

@@ -86,9 +86,19 @@ struct SafariView: UIViewRepresentable {
         } else {
             injectCloseButton();
         }
-        
-        // 每秒检查一次，确保按钮注入在动态加载的页面上
-        setInterval(injectCloseButton, 1000);
+
+        // 用 MutationObserver 代替每秒轮询：仅在 DOM 变化时（动态加载的页面）重新注入，
+        // 通过 requestAnimationFrame 合并连续变化，空闲时零开销。
+        let closeBtnScheduled = false;
+        const closeBtnObserver = new MutationObserver(function() {
+            if (closeBtnScheduled) return;
+            closeBtnScheduled = true;
+            requestAnimationFrame(function() {
+                closeBtnScheduled = false;
+                injectCloseButton();
+            });
+        });
+        closeBtnObserver.observe(document.documentElement, { childList: true, subtree: true });
         """
         
         let closeButtonUserScript = WKUserScript(

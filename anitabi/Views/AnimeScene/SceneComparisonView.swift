@@ -35,6 +35,7 @@ struct SceneComparisonView: View {
     @State private var currentAnimeSceneURL: URL
     @State private var currentAnimeSceneImage: UIImage? = nil
     @State private var isShowingAnimeScenePicker = false
+    @State private var generateErrorMessage: String? = nil
     
     // 视图模型
     @StateObject private var cameraVM = CameraViewModel()
@@ -66,20 +67,23 @@ struct SceneComparisonView: View {
             }
         }
         .navigationBarHidden(true)
+        // カメラのセットアップ起点はここ一箇所に集約する。
+        // checkPermissions → 許可済みなら setupCamera を呼び、setupCamera は冪等なので
+        // ComparisonResultView から戻ってきた際の再開もこの一本でカバーできる。
         .onAppear(perform: setupOnAppear)
         .onDisappear {
             cameraVM.stopSession()
         }
-        .onAppear {
-            // ComparisonResultViewから戻ってきた時にカメラを再開
-            if !cameraVM.isSessionRunning && capturedImage == nil {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                    cameraVM.setupCamera()
-                }
-            }
-        }
         .alert(isPresented: $isShowingPermissionAlert) {
             createPermissionAlert()
+        }
+        .alert("生成失败", isPresented: Binding(
+            get: { generateErrorMessage != nil },
+            set: { if !$0 { generateErrorMessage = nil } }
+        )) {
+            Button("确定", role: .cancel) { generateErrorMessage = nil }
+        } message: {
+            Text(generateErrorMessage ?? "")
         }
         .fullScreenCover(isPresented: $showGeneratedComparison) {
             if let combinedImage = combinedImage {
@@ -94,9 +98,6 @@ struct SceneComparisonView: View {
             ImagePicker { image in
                 self.capturedImage = image
             }
-        }
-        .task {
-            await setupCameraIfNeeded()
         }
     }
     
@@ -425,14 +426,8 @@ struct SceneComparisonView: View {
                 showPermissionAlert(for: type)
             }
         }
-        // Check photo library permissions as well if needed
     }
-    
-    @MainActor
-    private func setupCameraIfNeeded() async {
-        // Task-based camera setup if needed
-    }
-    
+
     private func resetCamera() {
         withAnimation {
             capturedImage = nil
@@ -441,7 +436,10 @@ struct SceneComparisonView: View {
     }
     
     private func openExternalGenerator() {
-        if let url = URL(string: "https://lab.magiconch.com/image-merge/?url=\(scenePhotoURL)") {
+        // クエリに URL をそのまま埋め込むと特殊文字で壊れるためエンコードする
+        let encoded = scenePhotoURL.absoluteString
+            .addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? scenePhotoURL.absoluteString
+        if let url = URL(string: "https://lab.magiconch.com/image-merge/?url=\(encoded)") {
             UIApplication.shared.open(url)
         }
     }
@@ -505,10 +503,10 @@ struct SceneComparisonView: View {
                     self.showGeneratedComparison = true
                 }
             } catch {
-                // 处理错误
+                // 错误反馈：提示用户而不是静默失败
                 await MainActor.run {
                     self.isProcessingPhoto = false
-                    // 这里可以添加错误提示
+                    self.generateErrorMessage = "对比图生成失败，请检查网络后重试"
                 }
             }
         }

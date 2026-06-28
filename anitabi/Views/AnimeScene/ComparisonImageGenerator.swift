@@ -98,39 +98,44 @@ class ComparisonImageGenerator {
     
     private func drawTitleArea(in context: CGContext, sceneName: String) {
         let constants = DesignConstants.self
-        
-        // 绘制favicon
-        if let favicon = UIImage(named: "favicon") {
+
+        // 绘制favicon（存在する場合のみ）
+        let favicon = UIImage(named: "favicon")
+        if let favicon = favicon {
             let faviconRect = CGRect(
-                x: constants.horizontalPadding, 
-                y: constants.topPadding, 
-                width: constants.iconSize, 
+                x: constants.horizontalPadding,
+                y: constants.topPadding,
+                width: constants.iconSize,
                 height: constants.iconSize
             )
             favicon.draw(in: faviconRect)
-            
-            // 绘制场景名称文本
-            let titleAttributes: [NSAttributedString.Key: Any] = [
-                .font: UIFont.systemFont(ofSize: constants.titleFontSize, weight: .medium),
-                .foregroundColor: UIColor.white,
-                .shadow: {
-                    let shadow = NSShadow()
-                    shadow.shadowColor = UIColor.black.withAlphaComponent(0.5)
-                    shadow.shadowOffset = CGSize(width: 1, height: 1)
-                    shadow.shadowBlurRadius = 3
-                    return shadow
-                }()
-            ]
-            
-            let titleRect = CGRect(
-                x: constants.horizontalPadding + constants.iconSize + constants.iconTextSpacing,
-                y: constants.topPadding + (constants.iconSize - constants.titleFontSize) / 2 - 2,
-                width: constants.fixedAnimeWidth - constants.iconSize - constants.iconTextSpacing,
-                height: constants.titleFontSize + 4
-            )
-            
-            sceneName.draw(in: titleRect, withAttributes: titleAttributes)
         }
+
+        // 绘制场景名称文本（favicon の有無に関わらず常に描画する）
+        let titleAttributes: [NSAttributedString.Key: Any] = [
+            .font: UIFont.systemFont(ofSize: constants.titleFontSize, weight: .medium),
+            .foregroundColor: UIColor.white,
+            .shadow: {
+                let shadow = NSShadow()
+                shadow.shadowColor = UIColor.black.withAlphaComponent(0.5)
+                shadow.shadowOffset = CGSize(width: 1, height: 1)
+                shadow.shadowBlurRadius = 3
+                return shadow
+            }()
+        ]
+
+        // favicon がある場合はその右隣から、ない場合は左端から描画する
+        let titleX = favicon != nil
+            ? constants.horizontalPadding + constants.iconSize + constants.iconTextSpacing
+            : constants.horizontalPadding
+        let titleRect = CGRect(
+            x: titleX,
+            y: constants.topPadding + (constants.iconSize - constants.titleFontSize) / 2 - 2,
+            width: constants.fixedAnimeWidth - (titleX - constants.horizontalPadding),
+            height: constants.titleFontSize + 4
+        )
+
+        sceneName.draw(in: titleRect, withAttributes: titleAttributes)
     }
     
     private func drawImage(_ image: UIImage, in context: CGContext, rect: CGRect) {
