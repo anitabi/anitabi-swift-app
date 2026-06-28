@@ -42,7 +42,7 @@ class CameraViewModel: ObservableObject {
             if denied {
                 DispatchQueue.main.async {
                     self?.cameraPermissionDenied = true
-                    completion(true, "相机")
+                    completion(true, String(localized: "相机"))
                 }
             } else {
                 // 相册権限はここでは要求しない。

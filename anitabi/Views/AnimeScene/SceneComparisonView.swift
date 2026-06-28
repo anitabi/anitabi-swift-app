@@ -506,15 +506,15 @@ struct SceneComparisonView: View {
                 // 错误反馈：提示用户而不是静默失败
                 await MainActor.run {
                     self.isProcessingPhoto = false
-                    self.generateErrorMessage = "对比图生成失败，请检查网络后重试"
+                    self.generateErrorMessage = String(localized: "对比图生成失败，请检查网络后重试")
                 }
             }
         }
     }
     
     private func showPermissionAlert(for type: String) {
-        permissionAlertData.title = "\(type)访问受限"
-        permissionAlertData.message = "要使用该功能，请在设备的\"设置\"中允许应用访问\(type)"
+        permissionAlertData.title = String(localized: "\(type)访问受限")
+        permissionAlertData.message = String(localized: "要使用该功能，请在设备的\"设置\"中允许应用访问\(type)")
         isShowingPermissionAlert = true
     }
     

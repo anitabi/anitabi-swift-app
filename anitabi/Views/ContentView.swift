@@ -33,7 +33,9 @@ struct AppIdentityPillView: View {
                     .aspectRatio(contentMode: .fit)
                     .frame(width: 16, height: 16)
             }
-            Text(Bundle.main.infoDictionary?["CFBundleDisplayName"] as? String ?? Bundle.main.infoDictionary?["CFBundleName"] as? String ?? "Anitabi")
+            // localizedInfoDictionary 経由で表示名を取得する（displayName 拡張で対応済み）。
+            // infoDictionary 直接参照だと英語/日本語表示でも中国語名が出てしまうため使わない。
+            Text(Bundle.main.displayName ?? "Anitabi")
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundColor(.black)
         }

@@ -214,7 +214,7 @@ struct ImageViewer: View {
                 let (data, _) = try await URLSession.shared.data(from: url)
                 guard let image = UIImage(data: data) else {
                     await MainActor.run {
-                        saveError = "下载图片失败"
+                        saveError = String(localized: "下载图片失败")
                     }
                     return
                 }
@@ -226,7 +226,7 @@ struct ImageViewer: View {
                             showingSaveConfirmation = true
                         },
                         onError: { error in
-                            saveError = "保存到相册失败: \(error.localizedDescription)"
+                            saveError = String(localized: "保存到相册失败: \(error.localizedDescription)")
                         }
                     )
                     
@@ -240,7 +240,7 @@ struct ImageViewer: View {
                 }
             } catch {
                 await MainActor.run {
-                    saveError = "下载图片失败: \(error.localizedDescription)"
+                    saveError = String(localized: "下载图片失败: \(error.localizedDescription)")
                 }
             }
         }
