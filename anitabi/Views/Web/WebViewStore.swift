@@ -17,6 +17,8 @@ class WebViewStore: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     // ハンドラー / ユーザースクリプトを一度だけ設定するためのフラグ
     private var handlersConfigured = false
+    // コンパス（端末の方位）→ 地図回転 のブリッジを担うマネージャー
+    private let headingManager = HeadingManager()
     
     // シングルトンパターンの実装
     static let shared = WebViewStore()
@@ -79,6 +81,26 @@ class WebViewStore: ObservableObject {
                     margin-top: calc(env(safe-area-inset-top) + 21px) !important;
                 }
             }
+            /* 方向追従（コンパス）関連。@media の外＝全端末共通で適用する。 */
+            /* 定位点に重ねる方向扇形（コーン）。下端の頂点が定位点中心、上方向に広がるビーム形。 */
+            .anitabi-heading-cone {
+                position: absolute;
+                left: 50%;
+                top: 50%;
+                width: 0;
+                height: 0;
+                border-left: 16px solid transparent;
+                border-right: 16px solid transparent;
+                border-top: 30px solid rgba(56, 135, 255, 0.45);
+                transform-origin: 50% 100%;
+                transform: translate(-50%, -100%) rotate(0deg);
+                pointer-events: none;
+                display: none;
+            }
+            /* 方向追従が ON のときコンパスボタンを強調表示する。 */
+            .mapboxgl-ctrl-compass.anitabi-heading-active {
+                background-color: #d6e4ff !important;
+            }
         """
         // JavaScriptでCSSを注入するための関数
         let jsString = """
@@ -103,11 +125,171 @@ class WebViewStore: ObservableObject {
         )
         // スクリプトをウェブビューに追加
         webView.configuration.userContentController.addUserScript(userScript)
-        
+
+        // コンパス（方位）追従のセットアップ
+        setupHeadingBridge()
+
         // 初期ロード
         if let url = URL(string: "https://anitabi.cn/map") {
             webView.load(URLRequest(url: url))
         }
+    }
+
+    // MARK: - コンパス（方位）追従
+
+    /// 端末の方位で地図を回転させる「方向追従」機能を WebView に組み込む。
+    ///
+    /// - `headingHandler` メッセージで Web → Native の開始/停止を受ける（HeadingManager が処理）
+    /// - 注入 JS が以下を行う:
+    ///   1. コンパスボタン（.mapboxgl-ctrl-compass）のクリックを乗っ取り、方向追従の ON/OFF を切り替える
+    ///   2. 原生から渡る方位で `window.map` の bearing を平滑に回転（方向朝上モード）
+    ///   3. 定位点（.mapboxgl-user-location-dot）に方向扇形（コーン）を描画・回転させる
+    private func setupHeadingBridge() {
+        headingManager.webView = webView
+        webView.configuration.userContentController.add(headingManager, name: "headingHandler")
+
+        let headingScript = """
+        (function() {
+            if (window.__anitabiHeadingInit) return;
+            window.__anitabiHeadingInit = true;
+
+            var following = false;     // 方向追従が ON か
+            var targetHeading = 0;     // 原生から渡る最新の方位（0-360, 真北基準・時計回り）
+            var smoothed = null;       // 平滑化した現在の bearing
+            var rafId = null;
+
+            window.__anitabiHeadingActive = false;
+
+            // 最短経路で角度差を求める（-180〜180）
+            function shortestDelta(to, from) {
+                return ((to - from + 540) % 360) - 180;
+            }
+            function getMap() { return window.map; }
+
+            // 定位点に重ねる方向扇形（コーン）を用意する
+            function ensureCone() {
+                var marker = document.querySelector('.mapboxgl-user-location');
+                if (!marker) {
+                    var dot = document.querySelector('.mapboxgl-user-location-dot');
+                    marker = dot ? dot.parentElement : null;
+                }
+                if (!marker) return null;
+                var cone = marker.querySelector('.anitabi-heading-cone');
+                if (!cone) {
+                    cone = document.createElement('div');
+                    cone.className = 'anitabi-heading-cone';
+                    marker.insertBefore(cone, marker.firstChild);
+                }
+                return cone;
+            }
+
+            // コーンの向きを更新する。画面上の回転角 = 方位 - 地図 bearing。
+            function updateCone() {
+                var cone = ensureCone();
+                if (!cone) return;
+                var m = getMap();
+                var bearing = m ? m.getBearing() : 0;
+                var angle = targetHeading - bearing;
+                cone.style.transform = 'translate(-50%, -100%) rotate(' + angle + 'deg)';
+                cone.style.display = following ? 'block' : 'none';
+            }
+
+            // 地図 bearing を方位へ平滑に近づける（requestAnimationFrame ループ）
+            function tick() {
+                rafId = null;
+                if (!following) return;
+                var m = getMap();
+                if (!m) return;
+                if (smoothed === null) smoothed = m.getBearing();
+                smoothed += shortestDelta(targetHeading, smoothed) * 0.25;
+                smoothed = ((smoothed % 360) + 360) % 360;
+                m.setBearing(smoothed);
+                updateCone();
+                if (Math.abs(shortestDelta(targetHeading, smoothed)) > 0.3) schedule();
+            }
+            function schedule() {
+                if (rafId === null) rafId = requestAnimationFrame(tick);
+            }
+
+            // 原生がコンパス更新ごとに呼ぶ
+            window.__anitabiOnHeading = function(deg) {
+                if (typeof deg !== 'number' || isNaN(deg)) return;
+                targetHeading = ((deg % 360) + 360) % 360;
+                if (!following) return;
+                schedule();
+                updateCone();
+            };
+
+            function postNative(action) {
+                try { window.webkit.messageHandlers.headingHandler.postMessage({ action: action }); } catch (e) {}
+            }
+
+            function setFollowing(on) {
+                var m = getMap();
+                following = on;
+                window.__anitabiHeadingActive = on;
+                var btn = document.querySelector('.mapboxgl-ctrl-compass');
+                if (btn) btn.classList.toggle('anitabi-heading-active', on);
+                if (on) {
+                    postNative('start');
+                    // 未定位なら定位コントロールを起動し、蓝点表示＋現在地へ寄せる
+                    var geo = document.querySelector('.mapboxgl-ctrl-geolocate');
+                    if (geo && !geo.classList.contains('mapboxgl-ctrl-geolocate-active')
+                            && !geo.classList.contains('mapboxgl-ctrl-geolocate-background')) {
+                        geo.click();
+                    }
+                    smoothed = m ? m.getBearing() : 0;
+                } else {
+                    postNative('stop');
+                    var cone = document.querySelector('.anitabi-heading-cone');
+                    if (cone) cone.style.display = 'none';
+                    if (m) m.easeTo({ bearing: 0, duration: 500 }); // 正北へ戻す
+                }
+            }
+
+            // コンパスボタンのクリックを乗っ取る（既定の「重置到北向」を抑止し、追従の切替に変更）
+            function bindCompass() {
+                var btn = document.querySelector('.mapboxgl-ctrl-compass');
+                if (!btn || btn.__anitabiBound) return;
+                btn.__anitabiBound = true;
+                btn.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    e.stopImmediatePropagation();
+                    setFollowing(!following);
+                }, true); // capture フェーズで Mapbox 既定ハンドラより先に処理
+            }
+
+            // コントロール/定位点は動的生成されるため、DOM 変化を監視して再バインド・コーン更新
+            bindCompass();
+            var scheduled = false;
+            var obs = new MutationObserver(function() {
+                if (scheduled) return;
+                scheduled = true;
+                requestAnimationFrame(function() {
+                    scheduled = false;
+                    bindCompass();
+                    if (following) updateCone();
+                });
+            });
+            obs.observe(document.documentElement, { childList: true, subtree: true });
+
+            // 地図回転イベントでコーンの向きを同期（ジェスチャー回転時など）
+            (function hookRotate() {
+                var m = getMap();
+                if (!m) { setTimeout(hookRotate, 500); return; }
+                if (m.__anitabiRotateHook) return;
+                m.__anitabiRotateHook = true;
+                m.on('rotate', function() { if (following) updateCone(); });
+            })();
+        })();
+        """
+
+        let headingUserScript = WKUserScript(
+            source: headingScript,
+            injectionTime: .atDocumentEnd,
+            forMainFrameOnly: true
+        )
+        webView.configuration.userContentController.addUserScript(headingUserScript)
     }
     
     // インスタンスに画像ハンドラーとURLハンドラーを設定するメソッド
