@@ -81,25 +81,15 @@ class WebViewStore: ObservableObject {
                     margin-top: calc(env(safe-area-inset-top) + 21px) !important;
                 }
             }
-            /* 方向追従（コンパス）関連。@media の外＝全端末共通で適用する。 */
-            /* 定位点に重ねる方向扇形（コーン）。下端の頂点が定位点中心、上方向に広がるビーム形。 */
-            .anitabi-heading-cone {
-                position: absolute;
-                left: 50%;
-                top: 50%;
-                width: 0;
-                height: 0;
-                border-left: 16px solid transparent;
-                border-right: 16px solid transparent;
-                border-top: 30px solid rgba(56, 135, 255, 0.45);
-                transform-origin: 50% 100%;
-                transform: translate(-50%, -100%) rotate(0deg);
-                pointer-events: none;
-                display: none;
-            }
-            /* 方向追従が ON のときコンパスボタンを強調表示する。 */
-            .mapboxgl-ctrl-compass.anitabi-heading-active {
+            /* 方向追従（コンパス）関連。@media の外＝全端末共通で適用する。
+               方向扇形そのものは Mapbox 標準の .mapboxgl-user-location-heading
+               （GeolocateControl の showUserHeading）を使うため自作しない。
+               ここではコンパスボタンの状態表示だけを行う。 */
+            .mapboxgl-ctrl-compass.anitabi-heading-cone-mode {   /* 1段目: 正北固定・扇形回転 */
                 background-color: #d6e4ff !important;
+            }
+            .mapboxgl-ctrl-compass.anitabi-heading-mapup-mode {  /* 2段目: 地図ごと方向朝上に回転 */
+                background-color: #aecbff !important;
             }
         """
         // JavaScriptでCSSを注入するための関数
@@ -137,13 +127,19 @@ class WebViewStore: ObservableObject {
 
     // MARK: - コンパス（方位）追従
 
-    /// 端末の方位で地図を回転させる「方向追従」機能を WebView に組み込む。
+    /// 端末の方位（コンパス）で向きを示す「方向追従」機能を WebView に組み込む。
     ///
-    /// - `headingHandler` メッセージで Web → Native の開始/停止を受ける（HeadingManager が処理）
-    /// - 注入 JS が以下を行う:
-    ///   1. コンパスボタン（.mapboxgl-ctrl-compass）のクリックを乗っ取り、方向追従の ON/OFF を切り替える
-    ///   2. 原生から渡る方位で `window.map` の bearing を平滑に回転（方向朝上モード）
-    ///   3. 定位点（.mapboxgl-user-location-dot）に方向扇形（コーン）を描画・回転させる
+    /// コンパスボタン（.mapboxgl-ctrl-compass）のクリックを乗っ取り、3 段階で循環させる:
+    ///   1 段目（コーン回転）: 地図は正北固定のまま、Mapbox 標準の方向扇形
+    ///     （GeolocateControl の showUserHeading が描く .mapboxgl-user-location-heading）を
+    ///     端末の方位へ回転させる。＝ Google マップ既定の見え方。
+    ///   2 段目（方向朝上）: 地図ごと方位の方向へ回転（heading-up）。扇形は常に画面上を向く。
+    ///   3 段目（OFF）: 扇形を消し、地図を正北へ戻す。
+    ///
+    /// 方位は WKWebView では deviceorientation イベントが不安定なため、ネイティブの
+    /// CoreLocation（HeadingManager）から取得し、Mapbox 標準コンポーネントを直接駆動する。
+    /// - `headingHandler` メッセージで Web → Native の開始/停止を伝える（HeadingManager が処理）
+    /// - `window.__anitabiOnHeading(deg)` を Native が呼び、向きを反映する
     private func setupHeadingBridge() {
         headingManager.webView = webView
         webView.configuration.userContentController.add(headingManager, name: "headingHandler")
@@ -153,12 +149,14 @@ class WebViewStore: ObservableObject {
             if (window.__anitabiHeadingInit) return;
             window.__anitabiHeadingInit = true;
 
-            var following = false;     // 方向追従が ON か
+            // 3 段階モード: 0=OFF, 1=コーン回転(正北固定), 2=方向朝上(地図ごと回転)
+            var MODE_OFF = 0, MODE_CONE = 1, MODE_MAPUP = 2;
+            var mode = MODE_OFF;
             var targetHeading = 0;     // 原生から渡る最新の方位（0-360, 真北基準・時計回り）
-            var smoothed = null;       // 平滑化した現在の bearing
+            var smoothed = null;       // 方向朝上モードで平滑化した現在の bearing
             var rafId = null;
 
-            window.__anitabiHeadingActive = false;
+            window.__anitabiHeadingMode = 0; // デバッグ/検証用
 
             // 最短経路で角度差を求める（-180〜180）
             function shortestDelta(to, from) {
@@ -166,88 +164,117 @@ class WebViewStore: ObservableObject {
             }
             function getMap() { return window.map; }
 
-            // 定位点に重ねる方向扇形（コーン）を用意する
-            function ensureCone() {
-                var marker = document.querySelector('.mapboxgl-user-location');
-                if (!marker) {
-                    var dot = document.querySelector('.mapboxgl-user-location-dot');
-                    marker = dot ? dot.parentElement : null;
-                }
-                if (!marker) return null;
-                var cone = marker.querySelector('.anitabi-heading-cone');
-                if (!cone) {
-                    cone = document.createElement('div');
-                    cone.className = 'anitabi-heading-cone';
-                    marker.insertBefore(cone, marker.firstChild);
-                }
-                return cone;
-            }
-
-            // コーンの向きを更新する。画面上の回転角 = 方位 - 地図 bearing。
-            function updateCone() {
-                var cone = ensureCone();
-                if (!cone) return;
+            // Mapbox の GeolocateControl 実例を取得（自前の扇形ではなく標準コンポーネントを駆動）
+            function getGeolocate() {
                 var m = getMap();
-                var bearing = m ? m.getBearing() : 0;
-                var angle = targetHeading - bearing;
-                cone.style.transform = 'translate(-50%, -100%) rotate(' + angle + 'deg)';
-                cone.style.display = following ? 'block' : 'none';
+                if (!m || !m._controls) return null;
+                for (var i = 0; i < m._controls.length; i++) {
+                    var c = m._controls[i];
+                    if (c && (c._userLocationDotMarker || c._dotElement)) return c;
+                }
+                return null;
+            }
+            function headingEl() { return document.querySelector('.mapboxgl-user-location-heading'); }
+
+            // 標準の方向扇形（showUserHeading）を駆動する。deg=null で非表示。
+            function setConeHeading(deg) {
+                var ctrl = getGeolocate();
+                if (!ctrl) return;
+                var el = headingEl();
+                if (deg === null) {
+                    ctrl._heading = null;
+                    if (typeof ctrl._updateMarkerRotation === 'function') ctrl._updateMarkerRotation();
+                    if (el) el.style.display = 'none';
+                } else {
+                    ctrl._heading = deg;
+                    if (typeof ctrl._updateMarkerRotation === 'function') {
+                        ctrl._updateMarkerRotation();
+                    } else if (ctrl._userLocationDotMarker && ctrl._userLocationDotMarker.setRotation) {
+                        ctrl._userLocationDotMarker.setRotation(deg);
+                    }
+                    if (el) el.style.display = 'block';
+                }
             }
 
-            // 地図 bearing を方位へ平滑に近づける（requestAnimationFrame ループ）
+            // 方向朝上モード: 地図 bearing を方位へ平滑に近づける（requestAnimationFrame ループ）
             function tick() {
                 rafId = null;
-                if (!following) return;
+                if (mode !== MODE_MAPUP) return;
                 var m = getMap();
                 if (!m) return;
                 if (smoothed === null) smoothed = m.getBearing();
                 smoothed += shortestDelta(targetHeading, smoothed) * 0.25;
                 smoothed = ((smoothed % 360) + 360) % 360;
                 m.setBearing(smoothed);
-                updateCone();
                 if (Math.abs(shortestDelta(targetHeading, smoothed)) > 0.3) schedule();
             }
             function schedule() {
                 if (rafId === null) rafId = requestAnimationFrame(tick);
             }
 
+            // 現在のモードに応じて向きを反映する
+            function applyHeading() {
+                if (mode === MODE_OFF) return;
+                setConeHeading(targetHeading);    // どちらのモードでも扇形は表示・回転
+                if (mode === MODE_MAPUP) schedule(); // 方向朝上ではさらに地図も回す
+            }
+
             // 原生がコンパス更新ごとに呼ぶ
             window.__anitabiOnHeading = function(deg) {
                 if (typeof deg !== 'number' || isNaN(deg)) return;
                 targetHeading = ((deg % 360) + 360) % 360;
-                if (!following) return;
-                schedule();
-                updateCone();
+                applyHeading();
             };
 
             function postNative(action) {
                 try { window.webkit.messageHandlers.headingHandler.postMessage({ action: action }); } catch (e) {}
             }
 
-            function setFollowing(on) {
-                var m = getMap();
-                following = on;
-                window.__anitabiHeadingActive = on;
+            function updateButton() {
                 var btn = document.querySelector('.mapboxgl-ctrl-compass');
-                if (btn) btn.classList.toggle('anitabi-heading-active', on);
-                if (on) {
-                    postNative('start');
-                    // 未定位なら定位コントロールを起動し、蓝点表示＋現在地へ寄せる
-                    var geo = document.querySelector('.mapboxgl-ctrl-geolocate');
-                    if (geo && !geo.classList.contains('mapboxgl-ctrl-geolocate-active')
-                            && !geo.classList.contains('mapboxgl-ctrl-geolocate-background')) {
-                        geo.click();
-                    }
-                    smoothed = m ? m.getBearing() : 0;
-                } else {
-                    postNative('stop');
-                    var cone = document.querySelector('.anitabi-heading-cone');
-                    if (cone) cone.style.display = 'none';
-                    if (m) m.easeTo({ bearing: 0, duration: 500 }); // 正北へ戻す
+                if (!btn) return;
+                btn.classList.toggle('anitabi-heading-cone-mode', mode === MODE_CONE);
+                btn.classList.toggle('anitabi-heading-mapup-mode', mode === MODE_MAPUP);
+            }
+
+            // 未定位なら定位コントロールを起動し、蓝点・方向扇形を表示＋現在地へ寄せる
+            function ensureLocated() {
+                var geo = document.querySelector('.mapboxgl-ctrl-geolocate');
+                if (geo && !geo.classList.contains('mapboxgl-ctrl-geolocate-active')
+                        && !geo.classList.contains('mapboxgl-ctrl-geolocate-background')) {
+                    geo.click();
                 }
             }
 
-            // コンパスボタンのクリックを乗っ取る（既定の「重置到北向」を抑止し、追従の切替に変更）
+            function setMode(next) {
+                var prev = mode;
+                mode = next;
+                window.__anitabiHeadingMode = next;
+                updateButton();
+                var m = getMap();
+
+                // OFF から抜けるとき＝コンパス監視を開始＋定位
+                if (prev === MODE_OFF && next !== MODE_OFF) {
+                    postNative('start');
+                    ensureLocated();
+                }
+
+                if (next === MODE_OFF) {
+                    postNative('stop');
+                    setConeHeading(null);                            // 扇形を消す
+                    if (m) m.easeTo({ bearing: 0, duration: 500 });   // 正北へ戻す
+                    smoothed = null;
+                } else if (next === MODE_CONE) {
+                    if (m) m.easeTo({ bearing: 0, duration: 500 });   // 地図は正北固定→扇形の回転が見える
+                    smoothed = null;
+                    applyHeading();
+                } else if (next === MODE_MAPUP) {
+                    smoothed = m ? m.getBearing() : 0;                // 現在 bearing から方向朝上へ
+                    applyHeading();
+                }
+            }
+
+            // コンパスボタンのクリックを乗っ取り、3 段階で循環（既定の「重置到北向」は抑止）
             function bindCompass() {
                 var btn = document.querySelector('.mapboxgl-ctrl-compass');
                 if (!btn || btn.__anitabiBound) return;
@@ -255,11 +282,11 @@ class WebViewStore: ObservableObject {
                 btn.addEventListener('click', function(e) {
                     e.preventDefault();
                     e.stopImmediatePropagation();
-                    setFollowing(!following);
+                    setMode((mode + 1) % 3);
                 }, true); // capture フェーズで Mapbox 既定ハンドラより先に処理
             }
 
-            // コントロール/定位点は動的生成されるため、DOM 変化を監視して再バインド・コーン更新
+            // コントロール/定位点は動的生成されるため、DOM 変化を監視して再バインド・再反映
             bindCompass();
             var scheduled = false;
             var obs = new MutationObserver(function() {
@@ -268,19 +295,11 @@ class WebViewStore: ObservableObject {
                 requestAnimationFrame(function() {
                     scheduled = false;
                     bindCompass();
-                    if (following) updateCone();
+                    updateButton();
+                    if (mode !== MODE_OFF) applyHeading(); // 定位点が再生成されたら向きを再適用
                 });
             });
             obs.observe(document.documentElement, { childList: true, subtree: true });
-
-            // 地図回転イベントでコーンの向きを同期（ジェスチャー回転時など）
-            (function hookRotate() {
-                var m = getMap();
-                if (!m) { setTimeout(hookRotate, 500); return; }
-                if (m.__anitabiRotateHook) return;
-                m.__anitabiRotateHook = true;
-                m.on('rotate', function() { if (following) updateCone(); });
-            })();
         })();
         """
 
