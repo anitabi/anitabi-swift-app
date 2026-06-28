@@ -66,6 +66,12 @@ class WebViewStore: ObservableObject {
                     margin-top: calc(env(safe-area-inset-top) + 11px) !important;
                     background-image: none !important;
                 }
+                /* 検索結果リストの容器。検索フォーム（margin-top: env+11, 高さ約58px）を
+                   下へずらした分、結果リストの上パディングも合わせて確保し、
+                   先頭項目がフォームに隠れる不具合を防ぐ。 */
+                .side-search-box .features-box {
+                    padding-top: calc(env(safe-area-inset-top) + 75px) !important;
+                }
                 .window-points-box {
                     margin-bottom: calc(env(safe-area-inset-bottom) + 16px) !important;
                 }
