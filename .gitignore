@@ -1,0 +1,31 @@
+# macOS
+.DS_Store
+
+# Xcode - 用户个人状态（方案排序、断点、窗口布局等，不应入库）
+xcuserdata/
+*.xcuserstate
+*.xcscmblueprint
+
+# Xcode - 构建产物
+build/
+DerivedData/
+*.moved-aside
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Swift Package Manager
+# 注意：Package.resolved 已纳入版本管理（锁定依赖版本），故不忽略
+.build/
+.swiftpm/xcode/package.xcworkspace/contents.xcworkspacedata
+
+# CocoaPods / Carthage（当前未使用，预留）
+Pods/
+Carthage/Build/
+
+# fastlane（预留）
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots/**/*.png
+fastlane/test_output
