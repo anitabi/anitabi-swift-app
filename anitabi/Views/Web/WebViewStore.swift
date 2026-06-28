@@ -155,6 +155,7 @@ class WebViewStore: ObservableObject {
             var targetHeading = 0;     // 原生から渡る最新の方位（0-360, 真北基準・時計回り）
             var smoothed = null;       // 方向朝上モードで平滑化した現在の bearing
             var rafId = null;
+            var userInteracting = false; // ユーザーがピンチ/ドラッグ等で地図を操作中か
 
             window.__anitabiHeadingMode = 0; // デバッグ/検証用
 
@@ -200,6 +201,9 @@ class WebViewStore: ObservableObject {
             function tick() {
                 rafId = null;
                 if (mode !== MODE_MAPUP) return;
+                // 操作中は地図回転を止める。毎フレームの setBearing がジェスチャーと競合し
+                // ピンチでの拡大縮小ができなくなるため。操作終了（moveend）で再開する。
+                if (userInteracting) return;
                 var m = getMap();
                 if (!m) return;
                 if (smoothed === null) smoothed = m.getBearing();
@@ -300,6 +304,28 @@ class WebViewStore: ObservableObject {
                 });
             });
             obs.observe(document.documentElement, { childList: true, subtree: true });
+
+            // ユーザー操作中（ピンチ/ドラッグ/回転）は方向朝上の自動回転を一時停止し、指を離したら再開する。
+            // カメラの move イベントではなく地図キャンバスへの生のタッチを見る。
+            // こうすると定位の再センタリング等の programmatic なカメラ移動で誤って再開しない。
+            (function hookMapInteraction() {
+                var m = getMap();
+                if (!m) { setTimeout(hookMapInteraction, 500); return; }
+                if (m.__anitabiInteractionHook) return;
+                var el = (m.getCanvasContainer && m.getCanvasContainer())
+                      || (m.getCanvas && m.getCanvas());
+                if (!el) { setTimeout(hookMapInteraction, 500); return; }
+                m.__anitabiInteractionHook = true;
+                var endIfNoTouch = function(e) {
+                    if (!e.touches || e.touches.length === 0) {
+                        userInteracting = false;
+                        if (mode === MODE_MAPUP) schedule(); // 指を離したら向きへ追従再開
+                    }
+                };
+                el.addEventListener('touchstart', function() { userInteracting = true; }, { passive: true });
+                el.addEventListener('touchend', endIfNoTouch, { passive: true });
+                el.addEventListener('touchcancel', endIfNoTouch, { passive: true });
+            })();
         })();
         """
 
@@ -400,7 +426,7 @@ class WebViewStore: ObservableObject {
                         // 注意書きを単独行にする。フッターのボタンが増えても重ならないよう、
                         // 全幅を占有してボタン群を次の行へ折り返させる。
                         noticeElement.style.cssText = 'flex-basis: 100%; width: 100%; margin-bottom: 4px;';
-                        noticeElement.innerHTML = '<a><i>下列部分按钮可能需要长按才能被跳转</i></a>';
+                        noticeElement.innerHTML = '<a><i>\(String(localized: "下列部分按钮可能需要长按才能被跳转"))</i></a>';
                         // 親（div.foot）を折り返し可能にして、通知の下にボタンが回り込むようにする
                         footerDiv.style.flexWrap = 'wrap';
                         footerDiv.insertBefore(noticeElement, footerDiv.firstChild);
