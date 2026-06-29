@@ -55,24 +55,6 @@
         }
       }
     },
-    "Apple 地图导航" : {
-      "comment" : "Open the spot in Apple Maps for navigation",
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Apple Maps Navigation"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Apple マップでナビ"
-          }
-        }
-      }
-    },
     "https://creativecommons.org/licenses/by-nc-sa/4.0/deed.zh-hans" : {
       "comment" : "Localized URL of the CC BY-NC-SA 4.0 license deed shown on the onboarding screen",
       "extractionState" : "manual",
@@ -298,42 +280,6 @@
         }
       }
     },
-    "加载巡礼地标…" : {
-      "comment" : "Loading indicator while pilgrimage spots are being fetched on the map",
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Loading pilgrimage spots…"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "巡礼スポットを読み込み中…"
-          }
-        }
-      }
-    },
-    "原生地图" : {
-      "comment" : "Map source toggle: the native (in-app) map, as opposed to the web map",
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Native Map"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ネイティブ地図"
-          }
-        }
-      }
-    },
     "参考图加载失败" : {
       "comment" : "Error shown when the reference image fails to load",
       "extractionState" : "manual",
@@ -490,24 +436,6 @@
         }
       }
     },
-    "按住速看" : {
-      "comment" : "Press-and-hold button that momentarily hides the overlay to check the real framing",
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hold to peek"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "長押しで確認"
-          }
-        }
-      }
-    },
     "探索动画巡礼圣地" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -590,24 +518,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "本ツールはコミュニティによって共同構築されています。データは CC BY-NC-SA 4.0（表示—非営利—継承）ライセンスのもとで共有されています。"
-          }
-        }
-      }
-    },
-    "来源" : {
-      "comment" : "Label for the source/attribution of a scene image or data",
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Source"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "出典"
           }
         }
       }
@@ -766,42 +676,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "OK"
-          }
-        }
-      }
-    },
-    "第 %@ 集" : {
-      "comment" : "Episode label; %@ is the episode number",
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Episode %@"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "第%@話"
-          }
-        }
-      }
-    },
-    "网页地图" : {
-      "comment" : "Map source toggle: the web map, as opposed to the native map",
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Web Map"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ウェブ地図"
           }
         }
       }
