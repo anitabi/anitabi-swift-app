@@ -37,6 +37,42 @@
         }
       }
     },
+    "%lld%%" : {
+      "comment" : "Overlay opacity percentage shown next to the slider; %lld is the value",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld%%"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld%%"
+          }
+        }
+      }
+    },
+    "Apple 地图导航" : {
+      "comment" : "Open the spot in Apple Maps for navigation",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple Maps Navigation"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple マップでナビ"
+          }
+        }
+      }
+    },
     "https://creativecommons.org/licenses/by-nc-sa/4.0/deed.zh-hans" : {
       "comment" : "Localized URL of the CC BY-NC-SA 4.0 license deed shown on the onboarding screen",
       "extractionState" : "manual",
@@ -227,6 +263,24 @@
         }
       }
     },
+    "切换参考图显示" : {
+      "comment" : "Accessibility label for the button that shows/hides the reference overlay",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Toggle reference overlay"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "参考画像の表示を切り替え"
+          }
+        }
+      }
+    },
     "前往设置" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -244,6 +298,60 @@
         }
       }
     },
+    "加载巡礼地标…" : {
+      "comment" : "Loading indicator while pilgrimage spots are being fetched on the map",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Loading pilgrimage spots…"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "巡礼スポットを読み込み中…"
+          }
+        }
+      }
+    },
+    "原生地图" : {
+      "comment" : "Map source toggle: the native (in-app) map, as opposed to the web map",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Native Map"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ネイティブ地図"
+          }
+        }
+      }
+    },
+    "参考图加载失败" : {
+      "comment" : "Error shown when the reference image fails to load",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Failed to load reference image"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "参考画像の読み込みに失敗しました"
+          }
+        }
+      }
+    },
     "取消" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -257,6 +365,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "キャンセル"
+          }
+        }
+      }
+    },
+    "叠加透明度" : {
+      "comment" : "Accessibility label for the overlay opacity slider on the comparison camera",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Overlay opacity"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重ねる不透明度"
           }
         }
       }
@@ -346,6 +472,42 @@
         }
       }
     },
+    "拍照" : {
+      "comment" : "Accessibility label for the shutter button",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Take photo"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "撮影"
+          }
+        }
+      }
+    },
+    "按住速看" : {
+      "comment" : "Press-and-hold button that momentarily hides the overlay to check the real framing",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hold to peek"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "長押しで確認"
+          }
+        }
+      }
+    },
     "探索动画巡礼圣地" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -397,6 +559,24 @@
         }
       }
     },
+    "更换参考图" : {
+      "comment" : "Accessibility label / button to replace the anime reference image",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Change reference image"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "参考画像を変更"
+          }
+        }
+      }
+    },
     "本工具基于社区共建，数据遵循 署名、非商业性使用、相同方式共享 的 CC BY-NC-SA 4.0 协议共享。" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -410,6 +590,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "本ツールはコミュニティによって共同構築されています。データは CC BY-NC-SA 4.0（表示—非営利—継承）ライセンスのもとで共有されています。"
+          }
+        }
+      }
+    },
+    "来源" : {
+      "comment" : "Label for the source/attribution of a scene image or data",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Source"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "出典"
           }
         }
       }
@@ -445,6 +643,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "カメラを準備中…"
+          }
+        }
+      }
+    },
+    "正在加载参考图…" : {
+      "comment" : "Loading indicator shown in the viewport while the reference image downloads",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Loading reference image…"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "参考画像を読み込み中…"
           }
         }
       }
@@ -501,6 +717,24 @@
         }
       }
     },
+    "相册" : {
+      "comment" : "Button to pick an existing photo from the photo library as the captured image",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Library"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "アルバム"
+          }
+        }
+      }
+    },
     "相机" : {
       "comment" : "Resource name used in permission alerts",
       "extractionState" : "manual",
@@ -532,6 +766,60 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "OK"
+          }
+        }
+      }
+    },
+    "第 %@ 集" : {
+      "comment" : "Episode label; %@ is the episode number",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Episode %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "第%@話"
+          }
+        }
+      }
+    },
+    "网页地图" : {
+      "comment" : "Map source toggle: the web map, as opposed to the native map",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Web Map"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ウェブ地図"
+          }
+        }
+      }
+    },
+    "网页版" : {
+      "comment" : "Accessibility label for opening the web-based comparison generator",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Web version"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Web版"
           }
         }
       }
@@ -605,6 +893,24 @@
         }
       }
     },
+    "返回" : {
+      "comment" : "Accessibility label for the back button",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Back"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "戻る"
+          }
+        }
+      }
+    },
     "重拍" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -618,6 +924,42 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "撮り直す"
+          }
+        }
+      }
+    },
+    "重置对齐" : {
+      "comment" : "Button to reset the overlay's pan/zoom/rotation transform",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reset alignment"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "位置をリセット"
+          }
+        }
+      }
+    },
+    "重试" : {
+      "comment" : "Retry button when the reference image failed to load",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Retry"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "再試行"
           }
         }
       }
