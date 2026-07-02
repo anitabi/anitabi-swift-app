@@ -15,28 +15,46 @@ struct PermissionAlertData {
     var message: String = ""
 }
 
+// MARK: - 镜头（焦段）选项
+/// 后置焦段档位（0.5× / 1× / 2× / 3×…）。label 用于按钮显示，zoomFactor 是要设到虚拟相机上的 videoZoomFactor。
+/// 采用「虚拟多摄设备 + videoZoomFactor」方案：系统在物理镜头间平滑切换，并能提供计算变焦档（如主摄裁切出的 2×）。
+struct LensOption: Identifiable, Equatable {
+    let id: String            // 用 label 作唯一键（列表内唯一）
+    let label: String         // "0.5×" / "1×" / "2×"
+    let zoomFactor: CGFloat   // 对应的 videoZoomFactor
+    static func == (lhs: LensOption, rhs: LensOption) -> Bool { lhs.id == rhs.id }
+}
+
 // MARK: - 视图模型
 class CameraViewModel: ObservableObject {
     private let captureSession = AVCaptureSession()
     private let photoOutput = AVCapturePhotoOutput()
-    private var previewLayer: AVCaptureVideoPreviewLayer?
     private let sessionQueue = DispatchQueue(label: "com.meikenn.anitabi.sessionQueue")
     private var photoDelegate: PhotoCaptureDelegate?
+
+    /// 预览层在 init 就创建并挂到「尚未配置、未运行」的会话上（零成本、无竞争）。
+    /// 千万不要在会话启动后再从主线程挂载——那会让主线程等待会话队列，整页冻结（本次卡顿的根因）。
+    let previewLayer: AVCaptureVideoPreviewLayer
+
+    // 端末の向き（横向き左右）に追従してプレビュー／撮影を水平基準で回転させる。
+    private var videoDevice: AVCaptureDevice?
+    private var rotationCoordinator: AVCaptureDevice.RotationCoordinator?
+    private var previewRotationObservation: NSKeyValueObservation?
     
     @Published var isSettingUp: Bool = true
     @Published var cameraPermissionDenied: Bool = false
     @Published private(set) var isCameraReady: Bool = false
-    
-    // セッションが実行中かどうかを確認するプロパティ
-    var isSessionRunning: Bool {
-        return captureSession.isRunning
+
+    // 镜头（焦段）：可用焦段档位与当前选中。模拟器无相机时为空 → UI 不显示切换器。
+    @Published private(set) var availableLenses: [LensOption] = []
+    @Published private(set) var currentLensID: String = ""
+    private var desiredZoomFactor: CGFloat?   // 用户选中的焦段（在 sessionQueue 上读取，重配会话时沿用）
+
+    init() {
+        previewLayer = AVCaptureVideoPreviewLayer(session: captureSession)
+        previewLayer.videoGravity = .resizeAspectFill
     }
-    
-    // カメラが使用可能かどうかを確認
-    var isCameraAvailable: Bool {
-        return !isSettingUp && !cameraPermissionDenied && AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) != nil
-    }
-    
+
     func checkPermissions(completion: @escaping (Bool, String) -> Void) {
         checkCameraAuthorization { [weak self] denied in
             if denied {
@@ -96,10 +114,105 @@ class CameraViewModel: ObservableObject {
             DispatchQueue.main.async {
                 self.isSettingUp = false
                 self.isCameraReady = true
+                self.setupRotationCoordinatorIfNeeded()
             }
         }
     }
-    
+
+    // MARK: - 向き追従（RotationCoordinator）
+
+    /// device と previewLayer が揃ったら一度だけ RotationCoordinator を構築し、
+    /// プレビューの水平基準角を購読してリアルタイムに反映する。
+    private func setupRotationCoordinatorIfNeeded() {
+        guard rotationCoordinator == nil,
+              let device = videoDevice else { return }
+
+        let coordinator = AVCaptureDevice.RotationCoordinator(device: device, previewLayer: previewLayer)
+        rotationCoordinator = coordinator
+        applyPreviewRotation()
+        previewRotationObservation = coordinator.observe(
+            \.videoRotationAngleForHorizonLevelPreview, options: [.new]
+        ) { [weak self] _, _ in
+            DispatchQueue.main.async { self?.applyPreviewRotation() }
+        }
+    }
+
+    private func applyPreviewRotation() {
+        guard let coordinator = rotationCoordinator,
+              let connection = previewLayer.connection else { return }
+        let angle = coordinator.videoRotationAngleForHorizonLevelPreview
+        if connection.isVideoRotationAngleSupported(angle) {
+            connection.videoRotationAngle = angle
+        }
+    }
+
+    // MARK: - 镜头（焦段）切换（虚拟多摄 + videoZoomFactor）
+
+    /// 选最合适的后置相机：三摄 → 双广角 → 广角+长焦 → 单广角。
+    /// 虚拟设备（前三种）会随 videoZoomFactor 在物理镜头间平滑切换，并支持计算变焦档（如主摄裁切出的 2×）。
+    private func bestBackCamera() -> AVCaptureDevice? {
+        AVCaptureDevice.default(.builtInTripleCamera, for: .video, position: .back)
+            ?? AVCaptureDevice.default(.builtInDualWideCamera, for: .video, position: .back)
+            ?? AVCaptureDevice.default(.builtInDualCamera, for: .video, position: .back)
+            ?? AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back)
+    }
+
+    /// 由虚拟设备的构成镜头与切换阈值推导焦段档位，并返回「1× 广角」对应的 baseZoom。
+    /// ・有超广角 → 加 0.5×；恒有 1×；每颗长焦按其光学倍率加 2×/3×/5×；并始终保证含常用计算变焦 2×。
+    /// ・单物理镜头（如 SE / XR，无 constituents）→ 只有 1×（上层据 count>1 隐藏切换器）。
+    private func buildLensOptions(for device: AVCaptureDevice) -> (options: [LensOption], baseZoom: CGFloat) {
+        let constituents = device.constituentDevices
+        guard !constituents.isEmpty else {
+            return ([LensOption(id: "1×", label: "1×", zoomFactor: 1)], 1)
+        }
+        let switchovers = device.virtualDeviceSwitchOverVideoZoomFactors.map { CGFloat(truncating: $0) }
+        let hasUltraWide = constituents.contains { $0.deviceType == .builtInUltraWideCamera }
+        // 1× 广角对应的 videoZoomFactor：含超广角时 = 超广角→广角切换阈值（通常 2.0），否则 = 1.0。
+        let baseZoom: CGFloat = hasUltraWide ? (switchovers.first ?? 2) : 1
+
+        var multipliers = Set<CGFloat>()
+        if hasUltraWide { multipliers.insert(0.5) }
+        multipliers.insert(1)
+        // 光学长焦档：baseZoom 以上的切换阈值 → 相对 1× 的倍率（2/3/5…）。
+        for factor in switchovers where factor > baseZoom + 0.01 {
+            multipliers.insert((factor / baseZoom).rounded())
+        }
+        // 常用计算变焦 2×（若已有 2× 光学档则自动去重）。
+        multipliers.insert(2)
+
+        let options = multipliers.sorted().map { multiplier -> LensOption in
+            let label = zoomLabel(multiplier)
+            return LensOption(id: label, label: label, zoomFactor: baseZoom * multiplier)
+        }
+        return (options, baseZoom)
+    }
+
+    /// UI 倍率 → 标签："0.5×" / "1×" / "2×"。
+    private func zoomLabel(_ multiplier: CGFloat) -> String {
+        multiplier < 1 ? String(format: "%.1f×", Double(multiplier)) : "\(Int(multiplier))×"
+    }
+
+    /// 把目标 videoZoomFactor 钳制到设备允许范围。
+    private func clampZoom(_ factor: CGFloat, for device: AVCaptureDevice) -> CGFloat {
+        max(device.minAvailableVideoZoomFactor, min(factor, device.maxAvailableVideoZoomFactor))
+    }
+
+    /// 切换到指定焦段：设置虚拟设备的 videoZoomFactor（系统据阈值自动切换物理镜头，含计算变焦档）。
+    func switchLens(to option: LensOption) {
+        sessionQueue.async { [weak self] in
+            guard let self = self, let device = self.videoDevice else { return }
+            self.desiredZoomFactor = option.zoomFactor
+            do {
+                try device.lockForConfiguration()
+                device.videoZoomFactor = self.clampZoom(option.zoomFactor, for: device)
+                device.unlockForConfiguration()
+                DispatchQueue.main.async { self.currentLensID = option.id }
+            } catch {
+                print("切换焦段失败: \(error.localizedDescription)")
+            }
+        }
+    }
+
     private func resetCaptureSession() {
         if captureSession.isRunning {
             captureSession.stopRunning()
@@ -122,10 +235,22 @@ class CameraViewModel: ObservableObject {
             captureSession.sessionPreset = .photo
         }
 
-        // バックカメラの設定
-        guard let videoDevice = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) else {
+        // 后置相机：优先选虚拟多摄设备（三摄/双摄），以便系统在物理镜头间平滑切换并提供计算变焦档。
+        guard let videoDevice = bestBackCamera() else {
             handleCameraSetupFailure("Failed to get back camera")
             return false
+        }
+        self.videoDevice = videoDevice
+
+        // 由虚拟设备构成镜头 + 切换阈值推导焦段档位（0.5×/1×/2×/3×…），并确定起始焦段。
+        let (lenses, baseZoom) = buildLensOptions(for: videoDevice)
+        let initialZoom = desiredZoomFactor ?? baseZoom
+        let currentLens = lenses.min {
+            abs($0.zoomFactor - initialZoom) < abs($1.zoomFactor - initialZoom)
+        }
+        DispatchQueue.main.async {
+            self.availableLenses = lenses
+            self.currentLensID = currentLens?.id ?? ""
         }
 
         do {
@@ -137,6 +262,8 @@ class CameraViewModel: ObservableObject {
             if videoDevice.isExposureModeSupported(.continuousAutoExposure) {
                 videoDevice.exposureMode = .continuousAutoExposure
             }
+            // 起始焦段：三摄的 videoZoomFactor 默认 1.0 是「超广角」，需显式设成 1× 广角（或沿用用户上次选择）。
+            videoDevice.videoZoomFactor = clampZoom(initialZoom, for: videoDevice)
             videoDevice.unlockForConfiguration()
             
             let videoInput = try AVCaptureDeviceInput(device: videoDevice)
@@ -174,60 +301,16 @@ class CameraViewModel: ObservableObject {
         }
     }
     
-    func setupPreviewLayer(for view: UIView) {
-        // プレビューレイヤーがまだ設定されていない場合のみ設定する
-        if self.previewLayer == nil {
-            let layer = AVCaptureVideoPreviewLayer(session: self.captureSession)
-            layer.videoGravity = .resizeAspectFill
-            
-            DispatchQueue.main.async { [weak self] in
-                guard let self = self else { return }
-                
-                // レイヤーの境界を正確に設定
-                layer.frame = view.bounds
-                
-                // キャプチャセッションの現在の状態を確認
-                if !self.captureSession.isRunning {
-                    self.sessionQueue.async {
-                        if !self.captureSession.isRunning {
-                            self.captureSession.startRunning()
-                        }
-                    }
-                }
-                
-                // プレビューレイヤーをビューに追加
-                view.layer.sublayers?.forEach { if $0 is AVCaptureVideoPreviewLayer { $0.removeFromSuperlayer() } }
-                view.layer.addSublayer(layer)
-                self.previewLayer = layer
-            }
-        } else {
-            // 既存のプレビューレイヤーがある場合は更新
-            updatePreviewFrame(for: view)
-        }
-    }
-    
-    func updatePreviewFrame(for view: UIView) {
-        DispatchQueue.main.async { [weak self] in
-            guard let layer = self?.previewLayer else { return }
-            layer.frame = view.bounds
-            
-            // キャプチャセッションが実行されていることを確認
-            if let captureSession = self?.captureSession, !captureSession.isRunning {
-                self?.sessionQueue.async {
-                    if !captureSession.isRunning {
-                        captureSession.startRunning()
-                    }
-                }
-            }
-        }
-    }
-    
     func stopSession() {
         sessionQueue.async { [weak self] in
             guard let self = self, self.captureSession.isRunning else { return }
             self.captureSession.stopRunning()
             self.photoDelegate = nil
         }
+    }
+
+    deinit {
+        previewRotationObservation?.invalidate()
     }
     
     func capturePhoto(completion: @escaping (UIImage?) -> Void) {
@@ -239,9 +322,19 @@ class CameraViewModel: ObservableObject {
                 return
             }
             
+            // 撮影の向きをプレビュー（水平基準）に合わせる。写真とプレビューのフレーミングが一致し、
+            // cropToAspect の中心クロップがそのまま再現される。
+            if let connection = self.photoOutput.connection(with: .video) {
+                let angle = self.rotationCoordinator?.videoRotationAngleForHorizonLevelCapture
+                    ?? connection.videoRotationAngle
+                if connection.isVideoRotationAngleSupported(angle) {
+                    connection.videoRotationAngle = angle
+                }
+            }
+
             // 写真設定の構成
             let settings = AVCapturePhotoSettings(format: [AVVideoCodecKey: AVVideoCodecType.jpeg])
-            
+
             // 利用可能なフラッシュモードを確認して設定
             if self.photoOutput.supportedFlashModes.contains(.auto) {
                 settings.flashMode = .auto

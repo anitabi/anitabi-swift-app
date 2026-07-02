@@ -21,65 +21,77 @@ class ComparisonImageGenerator {
         static let iconTextSpacing: CGFloat = 10
         static let titleFontSize: CGFloat = 24
         static let locationFontSize: CGFloat = 16
-        static let fixedAnimeWidth: CGFloat = 640
-        static let fixedAnimeHeight: CGFloat = 360
+        /// 标准内容宽度（横向参考图时使用）。
+        static let baseContentWidth: CGFloat = 680
+        /// 单栏高度上限。超过时通过“缩小宽度”保持比例（避免竖图拼接卡过高）。
+        static let panelHeightCap: CGFloat = 760
     }
-    
+
     func generateComparisonImage(
         animeImage: UIImage,
         userImage: UIImage?,
         sceneName: String,
         sceneColor: UIColor,
-        sceneLocation: String
+        sceneLocation: String,
+        panelAspect: CGFloat
     ) -> UIImage? {
         // 常量实例化
         let constants = DesignConstants.self
-        
-        // 计算画布尺寸
-        let contentWidth = constants.fixedAnimeWidth
+
+        // 安全比例（异常输入回退到 16:9）
+        let aspect = panelAspect.isFinite && panelAspect > 0 ? panelAspect : 16.0 / 9.0
+
+        // 计算内容宽度与单栏高度：两栏比例都与参考图一致。
+        // 竖图会导致 panelHeight 过大，此时通过缩小 contentWidth 把高度钳到上限（仍保持精确比例）。
+        var contentWidth = constants.baseContentWidth
+        if contentWidth / aspect > constants.panelHeightCap {
+            contentWidth = constants.panelHeightCap * aspect
+        }
+        let panelHeight = contentWidth / aspect
+
         let canvasWidth = contentWidth + (constants.horizontalPadding * 2)
-        
+
         // 顶部和底部元素的高度
         let topElementHeight = max(constants.iconSize, constants.titleFontSize + 6) + 6
         let bottomElementHeight = max(constants.iconSize, constants.locationFontSize + 6) + 10
-        
+
         // 画布总高度
-        let totalHeight = constants.topPadding + topElementHeight + constants.fixedAnimeHeight + 
-                        constants.imageSpacing + constants.fixedAnimeHeight + bottomElementHeight + constants.bottomPadding
-        
+        let totalHeight = constants.topPadding + topElementHeight + panelHeight +
+                        constants.imageSpacing + panelHeight + bottomElementHeight + constants.bottomPadding
+
         let canvasSize = CGSize(width: canvasWidth, height: totalHeight)
-        
+
         // 创建图像渲染器
         let renderer = UIGraphicsImageRenderer(size: canvasSize)
-        
+
         return renderer.image { context in
             let ctx = context.cgContext
-            
+
             // 绘制背景和圆角
             drawBackground(in: ctx, size: canvasSize, color: sceneColor)
-            
+
             // 绘制标题区域
-            drawTitleArea(in: ctx, sceneName: sceneName)
-            
+            drawTitleArea(in: ctx, sceneName: sceneName, contentWidth: contentWidth)
+
             // 绘制动漫场景图片
             let animeImageRect = CGRect(
                 x: constants.horizontalPadding,
                 y: constants.topPadding + topElementHeight + 8,
-                width: constants.fixedAnimeWidth,
-                height: constants.fixedAnimeHeight
+                width: contentWidth,
+                height: panelHeight
             )
             drawImage(animeImage, in: ctx, rect: animeImageRect)
-            
+
             // 绘制用户图像（如果可用）
             if let userImage = userImage {
                 let userImageRect = CGRect(
                     x: constants.horizontalPadding,
                     y: animeImageRect.maxY + constants.imageSpacing,
-                    width: constants.fixedAnimeWidth,
-                    height: constants.fixedAnimeHeight
+                    width: contentWidth,
+                    height: panelHeight
                 )
                 drawImage(userImage, in: ctx, rect: userImageRect)
-                
+
                 // 绘制位置信息
                 drawLocationInfo(in: ctx, at: userImageRect.maxY + bottomElementHeight - constants.iconSize,
                                  location: sceneLocation, canvasWidth: canvasWidth)
@@ -96,7 +108,7 @@ class ComparisonImageGenerator {
         backgroundPath.fill()
     }
     
-    private func drawTitleArea(in context: CGContext, sceneName: String) {
+    private func drawTitleArea(in context: CGContext, sceneName: String, contentWidth: CGFloat) {
         let constants = DesignConstants.self
 
         // 绘制favicon（存在する場合のみ）
@@ -131,7 +143,7 @@ class ComparisonImageGenerator {
         let titleRect = CGRect(
             x: titleX,
             y: constants.topPadding + (constants.iconSize - constants.titleFontSize) / 2 - 2,
-            width: constants.fixedAnimeWidth - (titleX - constants.horizontalPadding),
+            width: contentWidth - (titleX - constants.horizontalPadding),
             height: constants.titleFontSize + 4
         )
 

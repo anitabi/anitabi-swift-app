@@ -37,24 +37,6 @@
         }
       }
     },
-    "%lld%%" : {
-      "comment" : "Overlay opacity percentage shown next to the slider; %lld is the value",
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%lld%%"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%lld%%"
-          }
-        }
-      }
-    },
     "https://creativecommons.org/licenses/by-nc-sa/4.0/deed.zh-hans" : {
       "comment" : "Localized URL of the CC BY-NC-SA 4.0 license deed shown on the onboarding screen",
       "extractionState" : "manual",
