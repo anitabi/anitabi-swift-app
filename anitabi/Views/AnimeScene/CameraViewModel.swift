@@ -262,10 +262,8 @@ class CameraViewModel: ObservableObject {
             if videoDevice.isExposureModeSupported(.continuousAutoExposure) {
                 videoDevice.exposureMode = .continuousAutoExposure
             }
-            // 起始焦段：三摄的 videoZoomFactor 默认 1.0 是「超广角」，需显式设成 1× 广角（或沿用用户上次选择）。
-            videoDevice.videoZoomFactor = clampZoom(initialZoom, for: videoDevice)
             videoDevice.unlockForConfiguration()
-            
+
             let videoInput = try AVCaptureDeviceInput(device: videoDevice)
             
             guard captureSession.canAddInput(videoInput) else {
@@ -285,6 +283,19 @@ class CameraViewModel: ObservableObject {
             captureSession.addOutput(photoOutput)
 
             captureSession.commitConfiguration()
+
+            // 起始焦段必须在 commit 之后设置：带 sessionPreset 的会话在纳入 input 时会接管设备、
+            // 重新配置其 activeFormat，videoZoomFactor 随之被重置回 1.0（三摄上 1.0 = 超广角 0.5×）。
+            // 在 commit 之前写入会被覆盖，表现为「UI 显示 1× 但实际是 0.5×」。
+            // （三摄的 1× 广角对应 videoZoomFactor ≈ 2.0，见 buildLensOptions 的 baseZoom。）
+            do {
+                try videoDevice.lockForConfiguration()
+                videoDevice.videoZoomFactor = clampZoom(initialZoom, for: videoDevice)
+                videoDevice.unlockForConfiguration()
+            } catch {
+                // 焦段设置失败不影响拍摄本身，不中断相机启动
+                print("设置起始焦段失败: \(error.localizedDescription)")
+            }
             return true
         } catch {
             handleCameraSetupFailure("Error setting up camera: \(error.localizedDescription)")
