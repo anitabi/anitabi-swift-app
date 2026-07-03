@@ -1,5 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
-<dict/>
+<dict>
+	<!-- App-Bound Domains: WKWebView で Service Worker を有効化するために必要。
+	     サイト自前の Workbox SW が全アセットをローカルにプリキャッシュし、起動が大幅に高速化する。
+	     登録ドメインはサブドメイン（www / image / img-tc 等）も自動的に含む。 -->
+	<key>WKAppBoundDomains</key>
+	<array>
+		<string>anitabi.cn</string>
+	</array>
+</dict>
 </plist>

@@ -26,10 +26,16 @@ class WebViewStore: ObservableObject {
     init() {
         // WKWebViewConfigurationを作成
         let configuration = WKWebViewConfiguration()
-        
-        // カスタムURLスキームハンドラーを登録
-        let schemeHandler = CacheURLSchemeHandler()
-        configuration.setURLSchemeHandler(schemeHandler, forURLScheme: "cached")
+
+        // App-Bound Domains（Info.plist の WKAppBoundDomains と対で有効になる）。
+        // WKWebView は既定で Service Worker が無効だが、これを true にすると
+        // anitabi.cn 上で SW が動き、サイト自前の Workbox SW（/sw.js）が
+        // JS/CSS/スプライト等をローカルにプリキャッシュする。
+        // → 毎起動 30 本以上あった 304 再検証の往復が消え、
+        //    ウォーム起動の DOMContentLoaded が実測 ~1.2s → ~0.28s（更新は SW が裏で自動取得）。
+        // 副作用: メインフレームの外部ドメイン遷移は WebKit にブロックされるため、
+        //         WebViewNavigationDelegate（PersistentWebView.swift）が SafariView へ振り分ける。
+        configuration.limitsNavigationsToAppBoundDomains = true
         
         // ウェブコンテンツのスケーリングを制御するスクリプト
         let disableZoomScript = WKUserScript(
@@ -119,8 +125,8 @@ class WebViewStore: ObservableObject {
         // コンパス（方位）追従のセットアップ
         setupHeadingBridge()
 
-        // 初期ロード
-        if let url = URL(string: "https://anitabi.cn/map") {
+        // 初期ロード（anitabi.cn は www へ 301 されるため、直接 www を指定して毎起動 1 往復節約）
+        if let url = URL(string: "https://www.anitabi.cn/map") {
             webView.load(URLRequest(url: url))
         }
     }

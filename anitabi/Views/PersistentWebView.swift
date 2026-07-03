@@ -30,14 +30,40 @@ struct PersistentWebView: UIViewRepresentable {
         webViewStore.webView.navigationDelegate = context.coordinator
         return webViewStore.webView
     }
-    
+
     func updateUIView(_ uiView: WKWebView, context: Context) {
         // UIViewRepresentableの更新時には特に何もしない
         // WebViewは永続的なインスタンスなので、毎回再ロードする必要はない
     }
-    
+
     func makeCoordinator() -> WebViewNavigationDelegate {
-        return WebViewNavigationDelegate()
+        return WebViewNavigationDelegate(safariViewModel: safariViewModel)
+    }
+}
+
+// メイン WebView のナビゲーション制御。
+// App-Bound Domains 有効時、外部ドメインへのメインフレーム遷移は WebKit にブロックされ
+// 何も起きないため、ここで先に検知して SafariView（シート）へ振り分ける。
+// （従来の「リンク長押し→開くで地図ページが外部サイトに置き換わり戻れなくなる」問題もこれで解消）
+class WebViewNavigationDelegate: NSObject, WKNavigationDelegate {
+    private let safariViewModel: SafariViewModel
+
+    init(safariViewModel: SafariViewModel) {
+        self.safariViewModel = safariViewModel
+    }
+
+    func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+        // targetFrame が nil（新規ウィンドウ扱い）の場合もメインフレーム相当として扱う
+        if let url = navigationAction.request.url,
+           navigationAction.targetFrame?.isMainFrame != false,
+           let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https",
+           let host = url.host?.lowercased(),
+           host != "anitabi.cn", !host.hasSuffix(".anitabi.cn") {
+            safariViewModel.openInSafari(url.absoluteString)
+            decisionHandler(.cancel)
+            return
+        }
+        decisionHandler(.allow)
     }
 }
 
