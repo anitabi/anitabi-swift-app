@@ -27,7 +27,7 @@ struct WorkCardSheet: View {
     /// 一覧から地標を選んだ経路。地図からの選択とは違い、呼び出し側が镜头を寄せる。
     var onSelectPoint: (ScenePoint) -> Void
     var onClose: () -> Void
-    /// 一段式の「全部点位」＝ RootView に fitWork を再発行してもらう（初回 `didOpenWork` と同じ計算）。
+    /// 一段式の「全部点位」＝ RootView に fitWork を再発行してもらう（近接レベルの通常選択では画角を変えない）。
     var onRefit: () -> Void
 
     /// 全作品で共有する分组方式。作品を跨いでも前回の選択を覚えておく（web 版のタブ記憶と同じ）。

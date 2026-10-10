@@ -13,6 +13,10 @@ import UIKit
 
 enum MapCameraPlanner {
 
+    /// 通常の作品選択で画角を保つ最小ズーム。初期値は視口作品 chips の近接レベル（z12）に合わせる。
+    /// 作品を開く挙動だけ調整できるよう、chips の表示閾値とは独立して持つ。
+    static let preserveWorkViewportMinZoom: Double = 12
+
     /// 作品フィットの上限。これ以上寄ると「作品の広がり」ではなく 1 点の景色になる。
     static let maxFitZoom: Double = 17
     /// 飛行時間の**上限**（Web 版 flyTo の体感 ≒1.2 秒）。実際の時間は `flightDuration` が
